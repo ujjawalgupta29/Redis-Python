@@ -2,17 +2,25 @@ from RedisCmd import RedisCmd
 
 class CommandReader:
     def readCommand(self, client_socket):
-        data = client_socket.recv(1024)
-        print(f"Raw data: {data}")
-        #convert bytes to string
-        data = data.decode('utf-8')
-        print(f"Decoded data: {data}")
+        try:
+            data = client_socket.recv(1024)
+            if not data:
+                # Client disconnected
+                return None
+                
+            # print(f"Raw data: {data}")
+            #convert bytes to string
+            data = data.decode('utf-8')
+            # print(f"Decoded data: {data}")
 
-        tokens, _ = self.decodeCmd(data)
-        print(f"Parsed tokens: {tokens}")
-        if tokens and len(tokens) > 0:
-            return RedisCmd(tokens[0], tokens[1:])
-        return None
+            tokens, _ = self.decodeCmd(data)
+            # print(f"Parsed tokens: {tokens}")
+            if tokens and len(tokens) > 0:
+                return RedisCmd(tokens[0], tokens[1:])
+            return None
+        except (ConnectionResetError, ConnectionAbortedError, OSError) as e:
+            print(f"Connection error in readCommand: {e}")
+            return None
 
     def decodeCmd(self, data):
         if not data:
@@ -56,7 +64,7 @@ class CommandReader:
                 return None, 0
             pos += delta
             tokens.append(token)
-        print(tokens)
+        # print(tokens)
         return tokens, pos
 
     def readBulkString(self, data):
@@ -76,7 +84,7 @@ class CommandReader:
         return data[1:pos], pos+2
 
     def readError(self, data):
-        return readSimpleString(data)
+        return self.readSimpleString(data)
 
     def readInt64(self, data):
         pos = 1
@@ -85,6 +93,6 @@ class CommandReader:
         while pos < len(data):
             if data[pos] == '\r':
                 break
-            pos += 1
             val = val * 10 + (ord(data[pos]) - ord('0'))
+            pos += 1
         return val, pos+2
