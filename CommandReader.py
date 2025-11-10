@@ -8,13 +8,10 @@ class CommandReader:
                 # Client disconnected
                 return None
                 
-            # print(f"Raw data: {data}")
             #convert bytes to string
             data = data.decode('utf-8')
-            # print(f"Decoded data: {data}")
 
             tokens, _ = self.decodeCmd(data)
-            # print(f"Parsed tokens: {tokens}")
             if tokens and len(tokens) > 0:
                 return RedisCmd(tokens[0], tokens[1:])
             return None
@@ -64,7 +61,6 @@ class CommandReader:
                 return None, 0
             pos += delta
             tokens.append(token)
-        # print(tokens)
         return tokens, pos
 
     def readBulkString(self, data):
