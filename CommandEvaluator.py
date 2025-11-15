@@ -19,6 +19,10 @@ class CommandEvaluator:
             return self.evaluateGet(args)
         elif cmd == 'TTL':
             return self.evaluateTtl(args)
+        elif cmd == 'DEL':
+            return self.evaluateDel(args)
+        elif cmd == 'EXPIRE':
+            return self.evaluateExpire(args)
         else:
             return '-ERR unknown command ' + cmd + '\r\n'
 
@@ -102,3 +106,14 @@ class CommandEvaluator:
             return ':' + str(data) + '\r\n'
         else:
             return '-ERR unknown type: ' + str(type(data)) + '\r\n'
+
+
+    def evaluateDel(self, args):
+        deletedKeys = 0
+        for key in args:
+            if self.keyValueStore.delete(key):
+                deletedKeys = deletedKeys + 1
+        return self.encode(deletedKeys, False)
+
+    def evaluateExpire(self, args):
+        return

@@ -12,3 +12,9 @@ class KeyValueStore:
 
     def get(self, key):
         return self.store.get(key, None)
+
+    def delete(self, key):
+        if self.get(key) is not None:
+            del self.store[key]
+            return True
+        return False
