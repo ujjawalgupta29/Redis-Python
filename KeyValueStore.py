@@ -1,4 +1,5 @@
 from ValueObject import ValueObject
+import time
 
 class KeyValueStore:
 
@@ -11,7 +12,11 @@ class KeyValueStore:
         self.store[key] = ValueObject(value, expiresAt)
 
     def get(self, key):
-        return self.store.get(key, None)
+        valObj = self.store.get(key, None)
+        if valObj is not None and valObj.expiresAt != -1 and valObj.expiresAt < int(time.time()):
+            del self.store[key]
+            return None
+        return valObj
 
     def delete(self, key):
         if self.get(key) is not None:

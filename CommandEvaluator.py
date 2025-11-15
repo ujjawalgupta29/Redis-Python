@@ -1,11 +1,12 @@
 from RedisCmd import RedisCmd
-from KeyValueStore import KeyValueStore
 import time
+from KeyValueStore import KeyValueStore
 
 
 class CommandEvaluator:
 
-    keyValueStore = KeyValueStore()
+    def __init__(self, keyValueStore: KeyValueStore):
+        self.keyValueStore = keyValueStore
 
     def evaluate(self, redisCmd: RedisCmd):
         cmd = redisCmd.cmd
@@ -66,13 +67,6 @@ class CommandEvaluator:
         valueObj = self.keyValueStore.get(key)
 
         if valueObj is None:
-            return "$-1\r\n"; # (nil)
-        
-        value = valueObj.value
-        expiresAt = valueObj.expiresAt
-
-        if expiresAt != -1 and expiresAt < int(time.time()):
-            self.keyValueStore.set(key, None, None)
             return "$-1\r\n"; # (nil)
 
         return self.encode(value, False)

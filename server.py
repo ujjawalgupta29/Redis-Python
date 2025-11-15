@@ -4,6 +4,8 @@ import sys
 from CommandReader import CommandReader
 from CommandEvaluator import CommandEvaluator
 from RedisCmd import RedisCmd
+from AutoExpire import AutoExpire
+from KeyValueStore import KeyValueStore
 
 def run_async_tcp_server():
     """Async TCP server using kqueue"""
@@ -39,13 +41,18 @@ def run_async_tcp_server():
     kq.control([server_event], 0, 0)
     
     # Initialize command reader and evaluator
+    keyValueStore = KeyValueStore()
     command_reader = CommandReader()
-    command_evaluator = CommandEvaluator()
+    command_evaluator = CommandEvaluator(keyValueStore)
+    autoExpire = AutoExpire(keyValueStore)
     
     print(f'Server is running on port 7379')
     
     try:
         while True:
+
+            #delete expired keys
+            autoExpire.cron()
             # Wait for events
             # None means wait indefinitely
             events = kq.control(None, max_clients, None)
