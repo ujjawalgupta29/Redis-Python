@@ -1,15 +1,20 @@
 from ValueObject import ValueObject
+from Eviction import Eviction
 import time
 
 class KeyValueStore:
 
-    store = {}
-
-    def __init__(self):
+    def __init__(self, Eviction: Eviction):
         self.store = {}
+        self.limit = 10
+        self.eviction = Eviction
 
     def set(self, key, value, expiresAt):
         self.store[key] = ValueObject(value, expiresAt)
+
+        if len(self.store) > self.limit:
+            self.eviction.evict(self.store)
+
 
     def get(self, key):
         valObj = self.store.get(key, None)

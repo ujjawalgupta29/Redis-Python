@@ -6,6 +6,7 @@ from CommandEvaluator import CommandEvaluator
 from RedisCmd import RedisCmd
 from AutoExpire import AutoExpire
 from KeyValueStore import KeyValueStore
+from Eviction import Eviction
 
 def run_async_tcp_server():
     """Async TCP server using kqueue"""
@@ -41,7 +42,8 @@ def run_async_tcp_server():
     kq.control([server_event], 0, 0)
     
     # Initialize command reader and evaluator
-    keyValueStore = KeyValueStore()
+    eviction = Eviction()
+    keyValueStore = KeyValueStore(eviction)
     command_reader = CommandReader()
     command_evaluator = CommandEvaluator(keyValueStore)
     autoExpire = AutoExpire(keyValueStore)
