@@ -116,4 +116,14 @@ class CommandEvaluator:
         return self.encode(deletedKeys, False)
 
     def evaluateExpire(self, args):
-        return
+        if len(args) != 2:
+            return "-ERR wrong number of arguments for 'expire' command\r\n"
+        key = args[0]
+        obj = self.keyValueStore.get(key)
+        if obj is None:
+            return self.encode(0, False)
+        
+        ttl = int(args[1])
+
+        obj.expiresAt = int(time.time()) + ttl
+        return self.encode(1, False)
