@@ -15,7 +15,6 @@ class CommandReader:
             while len(data) > 0:
                 tokens, delta = self.decodeCmd(data)
                 print(f'tokens: {tokens}')
-                print(f'delta: {delta}')
                 if tokens and len(tokens) > 0:
                     cmds.append(RedisCmd(tokens[0], tokens[1:]))
                 data = data[delta:]

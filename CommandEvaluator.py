@@ -1,12 +1,14 @@
 from RedisCmd import RedisCmd
 import time
 from KeyValueStore import KeyValueStore
+from AOF import AOF
 
 
 class CommandEvaluator:
 
     def __init__(self, keyValueStore: KeyValueStore):
         self.keyValueStore = keyValueStore
+        self.aof = AOF()
 
     def evaluate(self, redisCmd: RedisCmd):
         cmd = redisCmd.cmd
@@ -24,6 +26,8 @@ class CommandEvaluator:
             return self.evaluateDel(args)
         elif cmd == 'EXPIRE':
             return self.evaluateExpire(args)
+        elif cmd == 'BGREWRITEAOF':
+            return self.evaluateBgRewriteAof()
         else:
             return '-ERR unknown command ' + cmd + '\r\n'
 
@@ -121,3 +125,8 @@ class CommandEvaluator:
 
         obj.expiresAt = int(time.time()) + ttl
         return self.encode(1, False)
+
+    def evaluateBgRewriteAof(self):
+        print("Background append only file rewriting started")
+        self.aof.dumpToFile(self.keyValueStore.store)
+        return self.encode(" Background AOF rewrite finished successfully")
