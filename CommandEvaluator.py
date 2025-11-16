@@ -69,7 +69,7 @@ class CommandEvaluator:
         if valueObj is None:
             return "$-1\r\n"; # (nil)
 
-        return self.encode(value, False)
+        return self.encode(valueObj.value, False)
 
     def evaluateTtl(self, args):
         if len(args) != 1:

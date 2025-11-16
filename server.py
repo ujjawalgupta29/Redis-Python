@@ -99,13 +99,15 @@ def run_async_tcp_server():
                         
                         # Check if client is still connected
                         try:
-                            cmd = command_reader.readCommand(client_socket)
-                            if cmd is None:
+                            cmds = command_reader.readCommand(client_socket)
+                            if cmds is None:
                                 # Client disconnected or no data
                                 print(f"Client {event.ident} disconnected or sent empty data")
                                 raise ConnectionError("Client disconnected")
                                 
-                            res = command_evaluator.evaluate(cmd)
+                            res = ""
+                            for cmd in cmds:
+                                res = res + command_evaluator.evaluate(cmd)
                             print(f"Response: {res}")
                             # Send response back to client
                             client_socket.send(res.encode('utf-8'))
