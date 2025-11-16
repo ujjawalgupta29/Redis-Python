@@ -1,7 +1,5 @@
 class ValueObject:
-    value = None
-    expiresAt = -1
-
-    def __init__(self, value, expiresAt):
+    def __init__(self, value, expiresAt, typeEncoding):
         self.value = value
         self.expiresAt = expiresAt
+        self.typeEncoding = typeEncoding

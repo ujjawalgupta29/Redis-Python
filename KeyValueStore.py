@@ -9,8 +9,8 @@ class KeyValueStore:
         self.limit = 10
         self.eviction = Eviction
 
-    def set(self, key, value, expiresAt):
-        self.store[key] = ValueObject(value, expiresAt)
+    def set(self, key, value, expiresAt, objType, objEnc):
+        self.store[key] = ValueObject(value, expiresAt, objType | objEnc)
 
         if len(self.store) > self.limit:
             self.eviction.evict(self.store)

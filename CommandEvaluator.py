@@ -2,7 +2,7 @@ from RedisCmd import RedisCmd
 import time
 from KeyValueStore import KeyValueStore
 from AOF import AOF
-
+from Encoding import getObjTypeEncoding, assertType, assertEncoding, OBT_TYPE_STRING, OBJ_ENCODING_INT
 
 class CommandEvaluator:
 
@@ -48,6 +48,7 @@ class CommandEvaluator:
         key = args[0]
         value = args[1]
         expiresAt = -1
+        objType, objEnc = getObjTypeEncoding(value)
 
         i = 2
         while i < len(args):
@@ -62,7 +63,7 @@ class CommandEvaluator:
             else:
                 return "-ERR syntax error\r\n"
 
-        self.keyValueStore.set(key, value, expiresAt)
+        self.keyValueStore.set(key, value, expiresAt, objType, objEnc)
         return self.encode("OK")
 
     def evaluateGet(self, args):
@@ -139,9 +140,14 @@ class CommandEvaluator:
         key = args[0]
         obj = self.keyValueStore.get(key)
         if obj is None:
-            self.keyValueStore.set(key, 0, -1)
+            self.keyValueStore.set(key, 0, -1, OBT_TYPE_STRING, OBJ_ENCODING_INT)
             obj = self.keyValueStore.get(key)
-        if type(obj.value) != int:
-            return "-ERR value is not an integer or out of range\r\n"
+        
+        if not assertType(obj.typeEncoding, OBT_TYPE_STRING):
+            return "-ERR the operation is not permitted on this type\r\n"
+
+        if not assertEncoding(obj.typeEncoding, OBJ_ENCODING_INT):
+            return "-ERR the operation is not permitted on this encoding\r\n"
+
         obj.value = int(obj.value) + 1
         return self.encode(obj.value, False)
