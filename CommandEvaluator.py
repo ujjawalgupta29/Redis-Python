@@ -26,6 +26,8 @@ class CommandEvaluator:
             return self.evaluateDel(args)
         elif cmd == 'EXPIRE':
             return self.evaluateExpire(args)
+        elif cmd == 'INCR':
+            return self.evaluateIncr(args)
         elif cmd == 'BGREWRITEAOF':
             return self.evaluateBgRewriteAof()
         else:
@@ -130,3 +132,16 @@ class CommandEvaluator:
         print("Background append only file rewriting started")
         self.aof.dumpToFile(self.keyValueStore.store)
         return self.encode(" Background AOF rewrite finished successfully")
+
+    def evaluateIncr(self, args):
+        if len(args) != 1:
+            return "-ERR wrong number of arguments for 'incr' command\r\n"
+        key = args[0]
+        obj = self.keyValueStore.get(key)
+        if obj is None:
+            self.keyValueStore.set(key, 0, -1)
+            obj = self.keyValueStore.get(key)
+        if type(obj.value) != int:
+            return "-ERR value is not an integer or out of range\r\n"
+        obj.value = int(obj.value) + 1
+        return self.encode(obj.value, False)
