@@ -30,6 +30,8 @@ class CommandEvaluator:
             return self.evaluateIncr(args)
         elif cmd == 'BGREWRITEAOF':
             return self.evaluateBgRewriteAof()
+        elif cmd == 'INFO':
+            return self.evaluateInfo()
         else:
             return '-ERR unknown command ' + cmd + '\r\n'
 
@@ -151,3 +153,8 @@ class CommandEvaluator:
 
         obj.value = int(obj.value) + 1
         return self.encode(obj.value, False)
+
+    def evaluateInfo(self):
+        res = "# Keyspace\r\n"
+        res = res + f"db0:keys={len(self.keyValueStore.store)},expires=0,avg_ttl=0\r\n"
+        return self.encode(res, False)
