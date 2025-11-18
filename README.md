@@ -275,7 +275,14 @@ The server runs a background cron job that automatically deletes expired keys. T
 
 ### Eviction Policy
 
-When the store exceeds its limit (default: 10 keys), the eviction policy removes keys. Currently implements a simple eviction that removes the first key encountered.
+When the store exceeds its limit (default: 100 keys), the eviction policy automatically removes keys to maintain performance. The eviction strategy:
+
+- **Trigger**: Eviction activates when the store size exceeds the configured limit (100 keys)
+- **Target**: Evicts keys down to 60% of the limit (60 keys) to provide headroom for new inserts
+- **Method**: Removes keys sequentially until the target size is reached
+- **Configurable**: The limit and eviction ratio can be adjusted in `KeyValueStore.py` and `Eviction.py`
+
+This ensures the store maintains a stable size range (60-100 keys) and prevents memory issues during high-load scenarios.
 
 ### Type Encoding
 
@@ -288,10 +295,78 @@ The server uses efficient encoding for different value types:
 
 The `BGREWRITEAOF` command creates a snapshot of the current store in RESP format, saved as `redis-<timestamp>.aof`.
 
+## Monitoring with Prometheus
+
+The project includes Prometheus monitoring support to track Redis server metrics in real-time. This is particularly useful for observing eviction behavior, key counts, and performance under load.
+
+### Setup
+
+1. **Install Redis Exporter**: Download and install the [redis_exporter](https://github.com/oliver006/redis_exporter) tool.
+
+2. **Start Redis Exporter**: Run the exporter pointing to your Redis-Python server:
+   ```bash
+   ./redis_exporter -redis.addr redis://localhost:7379
+   ```
+   The exporter will expose metrics on `localhost:9121` by default.
+
+3. **Start Prometheus**: Use the provided `prometheus.yml` configuration file:
+   ```bash
+   prometheus --config.file=./prometheus.yml --web.enable-admin-api
+   ```
+   Prometheus will start on `localhost:9090` by default.
+
+### Configuration
+
+The `prometheus.yml` file is pre-configured with:
+- **Scrape interval**: 1 second (for real-time monitoring)
+- **Target**: `localhost:9121` (redis_exporter endpoint)
+- **Job name**: `redis_exporter`
+
+### Accessing Metrics
+
+1. **Prometheus UI**: Open your browser and navigate to:
+   ```
+   http://localhost:9090
+   ```
+
+2. **Query Interface**: Access the graph query interface at:
+   ```
+   http://localhost:9090/query?g0.expr=&g0.show_tree=0&g0.tab=graph&g0.range_input=1h&g0.res_type=auto&g0.res_density=medium&g0.display_mode=lines&g0.show_exemplars=0
+   ```
+
+3. **Example Queries**:
+   - `redis_connected_clients` - Number of connected clients
+   - `redis_keyspace_keys` - Total number of keys
+   - `redis_commands_processed_total` - Total commands processed
+
+### Testing with Bulk Load
+
+You can use the provided `bulkFire.py` script to generate load and observe eviction behavior:
+
+```bash
+# In one terminal, start the server
+python server.py
+
+# In another terminal, run bulkFire to generate load
+python utility/bulkFire.py
+
+# Monitor the metrics in Prometheus UI
+```
+
+The bulkFire script creates 10 concurrent threads, each sending SET commands every 0.5 seconds, which helps visualize the eviction policy in action.
+
+### Example Graph
+
+A sample Prometheus graph showing key count behavior during bulk load testing is available in the `testing/` folder:
+
+![Prometheus Bulk Testing Graph](testing/PrometheusBulkTesting.png)
+
+This graph demonstrates the eviction policy working correctly, with keys oscillating between the target range (60-100 keys) as eviction triggers when the limit is exceeded.
+
 ## Limitations
 
-- Store limit is hardcoded to 10 keys (configurable in `KeyValueStore.py`)
-- Simple eviction policy (removes first key)
+- Store limit is hardcoded to 100 keys (configurable in `KeyValueStore.py`)
+- Eviction policy evicts to 60% of limit (configurable in `Eviction.py`)
 - Limited command set (8 commands)
 - AOF rewrite is synchronous (not truly background)
 - No RDB persistence
