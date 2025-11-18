@@ -32,6 +32,10 @@ class CommandEvaluator:
             return self.evaluateBgRewriteAof()
         elif cmd == 'INFO':
             return self.evaluateInfo()
+        elif cmd == 'CLIENT':
+            return self.evaluateClient(args)
+        elif cmd == 'LATENCY':
+            return self.evaluateLatency(args)
         else:
             return '-ERR unknown command ' + cmd + '\r\n'
 
@@ -158,3 +162,13 @@ class CommandEvaluator:
         res = "# Keyspace\r\n"
         res = res + f"db0:keys={len(self.keyValueStore.store)},expires=0,avg_ttl=0\r\n"
         return self.encode(res, False)
+
+    def evaluateClient(self, args):
+        return self.encode("OK")
+
+    def evaluateLatency(self, args):
+        #test implementation only, not a real latency command
+        tokens = ["OK"]
+        for token in tokens:
+            res = res + f"${len(token)}\r\n{token}\r\n"
+        return f"*{len(tokens)}\r\n{res}"

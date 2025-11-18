@@ -6,7 +6,7 @@ class KeyValueStore:
 
     def __init__(self, Eviction: Eviction):
         self.store = {}
-        self.limit = 10
+        self.limit = 100
         self.eviction = Eviction
 
     def set(self, key, value, expiresAt, objType, objEnc):
