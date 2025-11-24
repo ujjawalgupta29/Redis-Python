@@ -7,6 +7,22 @@ from RedisCmd import RedisCmd
 from AutoExpire import AutoExpire
 from KeyValueStore import KeyValueStore
 from Eviction import Eviction
+import threading
+import signal
+from Atomic import Atomic
+import time
+
+shutdown_event = threading.Event()
+EngineStatus_WAITING = 1 << 1
+EngineStatus_BUSY = 1 << 2
+EngineStatus_SHUTTING_DOWN = 1 << 3
+server_status = Atomic(EngineStatus_WAITING)
+# Initialize command reader and evaluator
+eviction = Eviction()
+keyValueStore = KeyValueStore(eviction)
+command_reader = CommandReader()
+command_evaluator = CommandEvaluator(keyValueStore)
+autoExpire = AutoExpire(keyValueStore)
 
 def run_async_tcp_server():
     """Async TCP server using kqueue"""
@@ -41,23 +57,21 @@ def run_async_tcp_server():
     )
     kq.control([server_event], 0, 0)
     
-    # Initialize command reader and evaluator
-    eviction = Eviction()
-    keyValueStore = KeyValueStore(eviction)
-    command_reader = CommandReader()
-    command_evaluator = CommandEvaluator(keyValueStore)
-    autoExpire = AutoExpire(keyValueStore)
-    
     print(f'Server is running on port 7379')
     
     try:
-        while True:
-
+        while server_status.get() != EngineStatus_SHUTTING_DOWN:
             #delete expired keys
             autoExpire.cron()
             # Wait for events
             # None means wait indefinitely
             events = kq.control(None, max_clients, None)
+
+            if server_status.get() == EngineStatus_SHUTTING_DOWN:
+                break
+
+            if server_status.get() == EngineStatus_WAITING:
+                server_status.set(EngineStatus_BUSY)
             
             for event in events:
                 # If server socket is ready for IO (new connection)
@@ -138,6 +152,8 @@ def run_async_tcp_server():
                         except Exception as cleanup_error:
                             print(f"Error during cleanup for client {event.ident}: {cleanup_error}")
                         continue
+
+            server_status.set(EngineStatus_WAITING)
                         
     except KeyboardInterrupt:
         print("\nShutting down server...")
@@ -156,5 +172,29 @@ def run_async_tcp_server():
         server_fd.close()
         print("Server cleanup completed")
 
+def wait_for_signal():
+    shutdown_event.wait()
+
+def signal_handler(signum, frame):
+    print(f"Signal {signum} received. Shutting down server...")
+    shutdown_event.set()
+
+    while server_status.get() == EngineStatus_BUSY:
+        time.sleep(0.1)
+
+    server_status.set(EngineStatus_SHUTTING_DOWN)
+    command_evaluator.evaluate(RedisCmd("BGREWRITEAOF", []))
+    sys.exit(0)
+
 if __name__ == "__main__":
-    run_async_tcp_server()
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    server_thread = threading.Thread(target=run_async_tcp_server, daemon=True)
+    server_thread.start()
+
+    signal_thread = threading.Thread(target=wait_for_signal, daemon=True)
+    signal_thread.start()
+
+    server_thread.join()
+    signal_thread.join()

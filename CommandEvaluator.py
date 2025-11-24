@@ -36,6 +36,8 @@ class CommandEvaluator:
             return self.evaluateClient(args)
         elif cmd == 'LATENCY':
             return self.evaluateLatency(args)
+        elif cmd == 'SLEEP':
+            return self.evaluateSleep(args)
         else:
             return '-ERR unknown command ' + cmd + '\r\n'
 
@@ -172,3 +174,9 @@ class CommandEvaluator:
         for token in tokens:
             res = res + f"${len(token)}\r\n{token}\r\n"
         return f"*{len(tokens)}\r\n{res}"
+
+    def evaluateSleep(self, args):
+        if len(args) != 1:
+            return "-ERR wrong number of arguments for 'sleep' command\r\n"
+        time.sleep(int(args[0]))
+        return self.encode("OK")

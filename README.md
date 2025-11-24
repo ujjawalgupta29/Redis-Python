@@ -295,6 +295,54 @@ The server uses efficient encoding for different value types:
 
 The `BGREWRITEAOF` command creates a snapshot of the current store in RESP format, saved as `redis-<timestamp>.aof`.
 
+### Graceful Shutdown
+
+The server implements graceful shutdown to ensure data integrity and proper cleanup when terminating. This feature ensures that:
+
+- **Signal Handling**: The server listens for `SIGINT` (Ctrl+C) and `SIGTERM` signals
+- **In-Flight Request Completion**: The server waits for any active requests to complete before shutting down
+- **Automatic Persistence**: Before exit, the server automatically triggers `BGREWRITEAOF` to save all data to disk
+- **Clean Resource Cleanup**: All client connections are properly closed and resources are freed
+
+**How it works:**
+
+1. **Engine Status Tracking**: The server uses atomic status flags to track its state:
+   - `WAITING`: Server is idle, waiting for requests
+   - `BUSY`: Server is processing client requests
+   - `SHUTTING_DOWN`: Shutdown has been initiated
+
+2. **Signal Handler**: When a shutdown signal is received:
+   - The signal handler sets a shutdown event
+   - It waits for the server to finish processing any active requests (checks if status is `BUSY`)
+   - Once the server is idle, it sets the status to `SHUTTING_DOWN`
+   - Automatically triggers `BGREWRITEAOF` to persist all data
+   - Exits cleanly
+
+3. **Server Loop**: The main server loop:
+   - Checks for `SHUTTING_DOWN` status before processing new events
+   - Breaks gracefully when shutdown is detected
+   - Cleans up all client connections in the `finally` block
+
+**Usage:**
+
+Simply send a termination signal to the server:
+
+```bash
+# Using Ctrl+C in the terminal where server is running
+# Or using kill command
+kill <server_pid>
+```
+
+The server will output:
+```
+Signal 2 received. Shutting down server...
+Shutting down server...
+Cleaning up all client connections...
+Server cleanup completed
+```
+
+This ensures that your data is safely persisted before the server terminates, preventing data loss during shutdown.
+
 ## Monitoring with Prometheus
 
 The project includes Prometheus monitoring support to track Redis server metrics in real-time. This is particularly useful for observing eviction behavior, key counts, and performance under load.
