@@ -110,7 +110,8 @@ def run_async_tcp_server():
                             print(f"Client {event.ident} not found in client_sockets")
                             continue
                             
-                        client_socket = clientStore.getClient(event.ident).socket
+                        client = clientStore.getClient(event.ident)
+                        client_socket = client.socket
                         
                         # Check if client is still connected
                         try:
@@ -122,7 +123,7 @@ def run_async_tcp_server():
                                 
                             res = ""
                             for cmd in cmds:
-                                res = res + command_evaluator.evaluate(cmd)
+                                res = res + command_evaluator.evaluate(client, cmd)
                             print(f"Response: {res}")
                             # Send response back to client
                             client_socket.send(res.encode('utf-8'))
@@ -181,7 +182,7 @@ def signal_handler(signum, frame):
         time.sleep(0.1)
 
     server_status.set(EngineStatus_SHUTTING_DOWN)
-    command_evaluator.evaluate(RedisCmd("BGREWRITEAOF", []))
+    command_evaluator.evaluate(Client(0, False, [], None), RedisCmd("BGREWRITEAOF", []))
     sys.exit(0)
 
 if __name__ == "__main__":

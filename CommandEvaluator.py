@@ -3,14 +3,29 @@ import time
 from KeyValueStore import KeyValueStore
 from AOF import AOF
 from Encoding import getObjTypeEncoding, assertType, assertEncoding, OBT_TYPE_STRING, OBJ_ENCODING_INT
-
+from Client import Client
 class CommandEvaluator:
 
     def __init__(self, keyValueStore: KeyValueStore):
         self.keyValueStore = keyValueStore
         self.aof = AOF()
 
-    def evaluate(self, redisCmd: RedisCmd):
+    def evaluate(self, client: Client, redisCmd: RedisCmd):
+        cmd = redisCmd.cmd
+
+        if cmd == 'MULTI':
+            return self.evaluateMulti(client)
+        elif cmd == 'EXEC':
+            return self.evaluateExec(client)
+        elif cmd == 'DISCARD':
+            return self.evaluateDiscard(client)
+        else:
+            if client.isTxnRunning():
+                client.addCmdToQueue(redisCmd)
+                return self.encode("QUEUED")
+            return self.evaluateCmd(redisCmd)
+
+    def evaluateCmd(self, redisCmd: RedisCmd):
         cmd = redisCmd.cmd
         args = redisCmd.args
 
@@ -179,4 +194,31 @@ class CommandEvaluator:
         if len(args) != 1:
             return "-ERR wrong number of arguments for 'sleep' command\r\n"
         time.sleep(int(args[0]))
+        return self.encode("OK")
+
+    def evaluateMulti(self, client: Client):
+        if client.isTxnRunning():
+            return "-ERR MULTI calls can not be nested\r\n"
+        client.beginTxn()
+        return self.encode("OK")
+
+    def evaluateExec(self, client: Client):
+        if not client.isTxnRunning():
+            return "-ERR EXEC without MULTI\r\n"
+        cmds = client.getCmdQueue()
+        responses = []
+        for cmd in cmds:
+            responses.append(self.evaluateCmd(cmd))
+        client.endTxn()
+        
+        # Format as RESP array: *<count>\r\n<element1><element2>...
+        res = f"*{len(responses)}\r\n"
+        for response in responses:
+            res = res + response
+        return res
+
+    def evaluateDiscard(self, client: Client):
+        if not client.isTxnRunning():
+            return "-ERR DISCARD without MULTI\r\n"
+        client.endTxn()
         return self.encode("OK")
