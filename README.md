@@ -7,6 +7,8 @@ A Redis-compatible asynchronous in-memory key-value store implementation in Pyth
 - **Asynchronous I/O**: Uses `kqueue` for high-performance async TCP server
 - **RESP Protocol**: Full support for Redis Serialization Protocol
 - **Command Pipelining**: Execute multiple commands in a single request
+- **Transactions**: Support for MULTI/EXEC/DISCARD with per-client transaction state
+- **Client Management**: Per-client connection tracking with independent transaction state
 - **Key Expiration**: Automatic expiration with TTL support
 - **Eviction**: Automatic key eviction when store limit is reached
 - **Persistence**: AOF (Append Only File) support for data persistence
@@ -25,6 +27,8 @@ The project is organized into modular components:
 - **`Eviction.py`**: Eviction policy implementation
 - **`AOF.py`**: Append Only File persistence
 - **`Encoding.py`**: Type and encoding utilities
+- **`Client.py`**: Client connection state management with transaction support
+- **`ClientStore.py`**: Centralized client connection registry and management
 
 ## Installation
 
@@ -224,6 +228,64 @@ INCR mykey
 # Response: -ERR the operation is not permitted on this encoding\r\n
 ```
 
+### MULTI / EXEC / DISCARD
+
+Transaction support allows you to queue multiple commands and execute them atomically.
+
+**Syntax:**
+```
+MULTI
+[commands...]
+EXEC
+```
+
+or
+
+```
+MULTI
+[commands...]
+DISCARD
+```
+
+**Examples:**
+```bash
+# Start a transaction
+MULTI
+# Response: +OK\r\n
+
+# Queue commands (they return QUEUED instead of executing)
+SET key1 "value1"
+# Response: +QUEUED\r\n
+
+GET key1
+# Response: +QUEUED\r\n
+
+SET key2 "value2"
+# Response: +QUEUED\r\n
+
+# Execute all queued commands atomically
+EXEC
+# Response: *3\r\n+OK\r\n$6\r\nvalue1\r\n+OK\r\n
+# (Returns array of results: [OK, "value1", OK])
+
+# Discard a transaction (abort without executing)
+MULTI
+SET key3 "value3"
+# Response: +QUEUED\r\n
+
+DISCARD
+# Response: +OK\r\n
+# (All queued commands are discarded, transaction ends)
+```
+
+**Transaction Behavior:**
+- Commands issued after `MULTI` are queued and return `+QUEUED\r\n`
+- `EXEC` executes all queued commands atomically and returns an array of results
+- `DISCARD` aborts the transaction and clears the command queue
+- Nested `MULTI` calls are not allowed (returns error)
+- `EXEC` or `DISCARD` without `MULTI` returns an error
+- Each client maintains its own transaction state independently
+
 ### BGREWRITEAOF
 
 Rewrite the Append Only File in the background.
@@ -253,6 +315,40 @@ This sends three commands:
 1. `PING` - Returns `+PONG\r\n`
 2. `SET k v` - Sets key "k" to value "v", returns `+OK\r\n`
 3. `GET k` - Gets value of "k", returns `$1\r\nv\r\n`
+
+## Client Management
+
+The server maintains client connections and their state through two key components:
+
+### Client
+
+The `Client` class represents a single client connection with the following properties:
+- **`fd`**: File descriptor for the client socket
+- **`isTxn`**: Boolean flag indicating if a transaction is currently active
+- **`cmdQueue`**: Queue of commands pending execution within a transaction
+- **`socket`**: The client's socket connection
+
+**Key Methods:**
+- `beginTxn()`: Starts a transaction, initializes the command queue
+- `endTxn()`: Ends a transaction, clears the command queue
+- `isTxnRunning()`: Checks if a transaction is currently active
+- `addCmdToQueue(cmd)`: Adds a command to the transaction queue
+- `getCmdQueue()`: Retrieves all queued commands
+
+### ClientStore
+
+The `ClientStore` class manages all active client connections in a centralized registry:
+
+- **`clients`**: Dictionary mapping file descriptors to Client objects
+- **`addClient(client)`**: Registers a new client connection
+- **`removeClient(fd)`**: Removes a client connection by file descriptor
+- **`getClient(fd)`**: Retrieves a client by file descriptor
+
+This architecture enables:
+- **Per-client transaction state**: Each client maintains its own independent transaction state
+- **Connection lifecycle management**: Centralized tracking of all active connections
+- **Efficient client lookup**: O(1) access to client objects by file descriptor
+- **Clean resource management**: Easy cleanup when clients disconnect
 
 ## RESP Protocol Format
 
@@ -415,11 +511,12 @@ This graph demonstrates the eviction policy working correctly, with keys oscilla
 
 - Store limit is hardcoded to 100 keys (configurable in `KeyValueStore.py`)
 - Eviction policy evicts to 60% of limit (configurable in `Eviction.py`)
-- Limited command set (8 commands)
+- Limited command set (subset of Redis commands)
 - AOF rewrite is synchronous (not truly background)
 - No RDB persistence
 - No replication support
 - No authentication/authorization
+- Transactions are not atomic across multiple keys (no watch/unwatch support)
 
 ## Example Session
 
@@ -452,11 +549,13 @@ $5\r\nAlice\r\n
 The codebase follows a modular architecture:
 
 1. **CommandReader**: Parses incoming RESP protocol commands
-2. **CommandEvaluator**: Routes commands to appropriate handlers
+2. **CommandEvaluator**: Routes commands to appropriate handlers, manages transaction execution
 3. **KeyValueStore**: Manages in-memory storage with expiration checks
 4. **AutoExpire**: Background task for cleaning expired keys
 5. **Eviction**: Handles eviction when store is full
 6. **AOF**: Manages persistence to disk
+7. **Client**: Represents individual client connections with transaction state
+8. **ClientStore**: Centralized registry for managing all active client connections
 
 ## License
 
