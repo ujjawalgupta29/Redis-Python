@@ -11,6 +11,8 @@ import threading
 import signal
 from Atomic import Atomic
 import time
+from ClientStore import ClientStore
+from Client import Client
 
 shutdown_event = threading.Event()
 EngineStatus_WAITING = 1 << 1
@@ -18,6 +20,7 @@ EngineStatus_BUSY = 1 << 2
 EngineStatus_SHUTTING_DOWN = 1 << 3
 server_status = Atomic(EngineStatus_WAITING)
 # Initialize command reader and evaluator
+clientStore = ClientStore()
 eviction = Eviction()
 keyValueStore = KeyValueStore(eviction)
 command_reader = CommandReader()
@@ -31,27 +34,24 @@ def run_async_tcp_server():
     max_clients = 20000
     con_clients = 0
     
-    # Dictionary to store client sockets by file descriptor
-    client_sockets = {}
-    
     # Create kqueue event array
     events = []
     
     # Create server socket
-    server_fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_fd.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_fd.setblocking(False)  # Set non-blocking mode
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_socket.setblocking(False)  # Set non-blocking mode
     
     # Bind the IP and port
-    server_fd.bind(('localhost', 7379))
-    server_fd.listen(max_clients)
+    server_socket.bind(('localhost', 7379))
+    server_socket.listen(max_clients)
     
     # Create kqueue instance 
     kq = select.kqueue()
     
     # Register server socket for read events 
     server_event = select.kevent(
-        server_fd.fileno(),
+        server_socket.fileno(),
         filter=select.KQ_FILTER_READ,
         flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE
     )
@@ -75,14 +75,15 @@ def run_async_tcp_server():
             
             for event in events:
                 # If server socket is ready for IO (new connection)
-                if event.ident == server_fd.fileno():
+                if event.ident == server_socket.fileno():
                     try:
                         # Accept incoming new connection
-                        client_fd, client_addr = server_fd.accept()
-                        client_fd.setblocking(False)  # Set non-blocking
+                        client_socket, client_addr = server_socket.accept()
+                        client_socket.setblocking(False)  # Set non-blocking
                         
                         # Store client socket in dictionary
-                        client_sockets[client_fd.fileno()] = client_fd
+                        print(f'Client socket fd: {client_socket.fileno()}')
+                        clientStore.addClient(Client(client_socket.fileno(), False, [], client_socket))
                         
                         # Increase concurrent clients count
                         con_clients += 1
@@ -91,7 +92,7 @@ def run_async_tcp_server():
                         
                         # Add client to kqueue monitoring
                         client_event = select.kevent(
-                            client_fd.fileno(),
+                            client_socket.fileno(),
                             filter=select.KQ_FILTER_READ,
                             flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE
                         )
@@ -105,11 +106,11 @@ def run_async_tcp_server():
                     # Handle client data
                     try:
                         # Get client socket from dictionary
-                        if event.ident not in client_sockets:
+                        if clientStore.getClient(event.ident) is None:
                             print(f"Client {event.ident} not found in client_sockets")
                             continue
                             
-                        client_socket = client_sockets[event.ident]
+                        client_socket = clientStore.getClient(event.ident).socket
                         
                         # Check if client is still connected
                         try:
@@ -142,9 +143,9 @@ def run_async_tcp_server():
                             )], 0, 0)
                             
                             # Close and remove client socket
-                            if event.ident in client_sockets:
-                                client_sockets[event.ident].close()
-                                del client_sockets[event.ident]
+                            if clientStore.getClient(event.ident) is not None:
+                                clientStore.getClient(event.ident).socket.close()
+                                clientStore.removeClient(event.ident)
                             
                             con_clients -= 1
                             print(f'Client {event.ident} disconnected. Total clients: {con_clients}')
@@ -162,15 +163,12 @@ def run_async_tcp_server():
     finally:
         # Cleanup
         print("Cleaning up all client connections...")
-        for fd, client_socket in client_sockets.items():
+        for client in clientStore.clients.values():
             try:
-                client_socket.close()
+                client.socket.close()
+                clientStore.removeClient(client)
             except:
                 pass
-        
-        kq.close()
-        server_fd.close()
-        print("Server cleanup completed")
 
 def wait_for_signal():
     shutdown_event.wait()
